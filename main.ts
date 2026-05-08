@@ -18,21 +18,13 @@ const DEFAULT_SETTINGS: DashboardSettings = {
 
 export default class DashboardPlugin extends Plugin {
     settings: DashboardSettings;
-
     async onload() {
         await this.loadSettings();
         this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
         this.addRibbonIcon('layout-dashboard', '控制中心', () => this.activateView());
         this.addCommand({ id: 'show-dashboard', name: '显示控制中心', callback: () => this.activateView() });
         this.addSettingTab(new DashboardSettingTab(this.app, this));
-        
-        this.app.workspace.onLayoutReady(() => { 
-            if (this.settings.openOnStartup) {
-                const emptyLeaves = this.app.workspace.getLeavesOfType("empty");
-                if (emptyLeaves.length > 0) emptyLeaves[0].setViewState({ type: VIEW_TYPE_DASHBOARD, active: true });
-                else this.activateView();
-            }
-        });
+        this.app.workspace.onLayoutReady(() => { if (this.settings.openOnStartup) this.activateView(); });
     }
     async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     async saveSettings() { await this.saveData(this.settings); }
@@ -46,7 +38,7 @@ export default class DashboardPlugin extends Plugin {
 class DashboardView extends ItemView {
     plugin: DashboardPlugin;
     boardArea: HTMLElement;
-    currentMonth: moment.Moment;
+    currentMonth: any;
     fileDataMap: Record<string, TFile[]> = {}; 
     listWrapper: HTMLElement;
     listScrollArea: HTMLElement;
@@ -71,7 +63,6 @@ class DashboardView extends ItemView {
 
         this.buildFileDataMap();
 
-        // Header
         const headerRow = container.createDiv({ cls: 'dashboard-header-row' });
         const header = headerRow.createDiv({ cls: 'baseline-header' });
         header.createDiv({ text: moment().format('M月D日 dddd'), cls: 'baseline-date' });
@@ -91,14 +82,11 @@ class DashboardView extends ItemView {
         };
         document.addEventListener('click', () => { if(this.plusMenu) this.plusMenu.removeClass('is-open'); });
 
-        // 🌟 核心：桌面级双栏 Grid 容器 🌟
         const gridContainer = container.createDiv({ cls: 'desktop-grid-container' });
         
-        // 左边：日历卡片
         const leftPanel = gridContainer.createDiv({ cls: 'glass-card calendar-panel' });
         this.boardArea = leftPanel.createDiv({ cls: 'heatmap-calendar-wrapper' });
 
-        // 右边：足迹卡片
         const rightPanel = gridContainer.createDiv({ cls: 'glass-card list-panel' });
         const chartHeader = rightPanel.createDiv({ cls: 'chart-header-row' });
         chartHeader.createEl('span', { text: '足迹回顾', cls: 'chart-title' });
@@ -171,7 +159,6 @@ class DashboardView extends ItemView {
                 cell.addClass(`level-${Math.min(count, 4)}`);
             }
 
-            // 默认渲染当天的足迹，或者高亮当天
             if (dateKey === moment().format('YYYY-MM-DD')) {
                 cell.addClass('active-selection');
                 this.triggerListAnimation(dateKey, files, lunar);
@@ -192,9 +179,14 @@ class DashboardView extends ItemView {
         if (files.length === 0) { 
             this.listHeader.innerHTML = `
                 <div class="record-list-date">${dateStr}</div>
-                <div class="record-list-lunar">${baziDay} · 暂无足迹</div>
+                <div class="record-list-lunar">${baziDay}</div>
             `;
-            this.listWrapper.style.maxHeight = '400px';
+            // 🌟 空状态：禅意呼吸灯动效 🌟
+            const emptyState = this.listScrollArea.createDiv({ cls: 'empty-state-container' });
+            emptyState.createDiv({ cls: 'empty-state-icon' });
+            emptyState.createDiv({ text: '今日暂无足迹', cls: 'empty-state-text' });
+            
+            this.listWrapper.style.maxHeight = '1000px';
             this.listWrapper.style.opacity = '1';
             return; 
         }
@@ -204,13 +196,16 @@ class DashboardView extends ItemView {
             <div class="record-list-lunar">${baziDay}</div>
         `;
         
-        files.forEach(file => {
+        files.forEach((file, index) => {
             const item = this.listScrollArea.createDiv({ cls: 'record-item' });
+            // 🌟 核心：为每个项目分配延迟，实现波浪级联动画 🌟
+            item.style.animationDelay = `${index * 0.05}s`;
+            
             item.createDiv({ text: '📄', cls: 'record-icon' });
             item.createDiv({ text: file.basename, cls: 'record-title' });
             item.onclick = async () => { await this.app.workspace.getLeaf(true).openFile(file); };
         });
-        this.listWrapper.style.maxHeight = '1000px'; // 桌面端给足高度
+        this.listWrapper.style.maxHeight = '1000px';
         this.listWrapper.style.opacity = '1';
     }
 
@@ -271,7 +266,6 @@ class QuickNoteModal extends Modal {
         new Setting(contentEl).setName('记录标题').addText(text => { text.setValue(this.title); text.onChange(value => this.title = value); });
         new Setting(contentEl).setName('归档日期').addText(text => { text.setValue(this.date); text.onChange(value => this.date = value); });
         
-        // 🌟 核心：Folder Suggester (内嵌手风琴式，在弹窗内部展开，可通过滚动条浏览，绝不被键盘遮挡) 🌟
         const folderSetting = new Setting(contentEl).setName('归档路径 (点击查看已有文件夹)').addText(text => { 
             text.setValue(this.folderPath); 
             text.onChange(value => this.folderPath = value); 
@@ -280,15 +274,13 @@ class QuickNoteModal extends Modal {
             const settingControl = inputEl.parentElement;
             
             if(settingControl) {
-                // 这个包裹层直接跟在输入框下面，属于文档流
                 const suggestWrapper = settingControl.createDiv({ cls: 'folder-suggest-wrapper' });
-                
                 const allFolders = this.app.vault.getAllLoadedFiles().filter(f => f instanceof TFolder && f.path !== '/') as TFolder[];
 
                 const showSuggestions = () => {
                     suggestWrapper.empty();
                     const query = inputEl.value.toLowerCase();
-                    const matches = allFolders.filter(f => f.path.toLowerCase().includes(query)).slice(0, 30); // 增加展示数量，因为能滑动
+                    const matches = allFolders.filter(f => f.path.toLowerCase().includes(query)).slice(0, 30); 
 
                     if (matches.length > 0) {
                         suggestWrapper.addClass('is-open');
@@ -302,18 +294,10 @@ class QuickNoteModal extends Modal {
                                 inputEl.dispatchEvent(new Event('input'));
                             };
                         });
-                        
-                        // 仅在弹窗内部平滑滚动到选项，不会引起整个屏幕乱跳
-                        setTimeout(() => {
-                            settingControl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                        }, 100);
-                        
-                    } else {
-                        suggestWrapper.removeClass('is-open');
-                    }
+                        setTimeout(() => { settingControl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 100);
+                    } else { suggestWrapper.removeClass('is-open'); }
                 };
 
-                // 随时点开看
                 inputEl.addEventListener('click', showSuggestions);
                 inputEl.addEventListener('input', showSuggestions);
                 inputEl.addEventListener('focus', showSuggestions);
@@ -321,7 +305,6 @@ class QuickNoteModal extends Modal {
             }
         });
         
-        // 我们不再需要手动调用 setCta()，而是通过 CSS 直接强力捕获模态框内的所有 button 元素 (强制黑白对比)
         new Setting(contentEl).addButton(btn => btn.setButtonText('确认创建').onClick(() => { 
             if (!this.title || !this.folderPath) return; 
             this.close(); 
