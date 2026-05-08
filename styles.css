@@ -108,7 +108,7 @@
 .calendar-cell[class*="level-"] .cal-date-num, .calendar-cell[class*="level-"] .cal-lunar-text { color: #FFFFFF !important; opacity: 1 !important;}
 
 /* =========================================
-   🌟 核心微交互：SVG图标、波浪列表与禅意空状态 🌟
+   🌟 核心微交互：丝滑波浪列表与 SVG 图标 🌟
 ========================================= */
 .record-list-wrapper { width: 100%; display: flex; flex-direction: column; height: 100%;}
 .record-list-header { margin-bottom: 20px; padding-left: 4px; }
@@ -116,41 +116,55 @@
 .record-list-count { font-size: 14px; font-weight: 600; color: var(--bazi-text-muted); opacity: 0.8; }
 .record-list-lunar { font-size: 14px; font-weight: 600; color: var(--bazi-text-muted); margin-top: 8px; }
 
-/* Flex 容器，让空状态能完美垂直居中 */
 .record-list-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 8px; max-height: 380px;}
 .record-list-scroll::-webkit-scrollbar { width: 6px; }
 .record-list-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
 .theme-dark .record-list-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
 
+/* 🌟 波浪级联动画定义 (丝滑浮现) 🌟 */
 @keyframes listWave {
-    0% { opacity: 0; transform: translateY(12px); }
-    100% { opacity: 1; transform: translateY(0); }
+    0% { opacity: 0; transform: translateY(16px) scale(0.98); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .record-item {
     background: transparent !important; border-radius: 12px; padding: 16px 14px;
-    display: flex; align-items: center; gap: 14px; cursor: pointer;
-    border-bottom: 1px solid rgba(150, 150, 150, 0.12) !important; transition: all 0.2s ease;
-    opacity: 0; animation: listWave 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    display: flex; align-items: center; gap: 16px; cursor: pointer;
+    border-bottom: 1px solid rgba(150, 150, 150, 0.12) !important; 
+    
+    /* 🌟 核心：更丝滑的果冻阻尼过渡 🌟 */
+    transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.1),
+                background 0.4s ease, border-color 0.4s ease !important;
+    opacity: 0; animation: listWave 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transform-origin: left center;
 }
 .record-item:last-child { border-bottom: none !important; }
 .theme-dark .record-item { border-bottom-color: rgba(255, 255, 255, 0.08) !important; }
 
-/* 🌟 悬浮状态：整条卡片右移，SVG 图标点亮并放大 🌟 */
-.record-item:hover { background: rgba(120, 120, 120, 0.06) !important; transform: translateX(6px) !important; } 
-.record-item:hover .record-icon { color: var(--bazi-accent-red); opacity: 1; transform: scale(1.15); }
+/* 🌟 悬浮状态：渐变呼吸背景 + 弹性缩放微移 🌟 */
+.record-item:hover { 
+    background: linear-gradient(90deg, rgba(138, 31, 31, 0.04) 0%, transparent 100%) !important; 
+    transform: translateX(8px) scale(1.01) !important; 
+    border-bottom-color: transparent !important;
+} 
+.theme-dark .record-item:hover { background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, transparent 100%) !important; }
 
-/* 🌟 极简 SVG 文件图标 🌟 */
+/* 🌟 极简 SVG 图标独立动效 🌟 */
 .record-icon { 
     display: flex; align-items: center; justify-content: center;
-    color: var(--bazi-text-muted); opacity: 0.6; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+    color: var(--bazi-text-muted); opacity: 0.5; 
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.3s ease, opacity 0.3s ease; 
 }
-.record-title { font-size: 16px; font-weight: 600; color: var(--bazi-text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+/* 鼠标滑过时：图标点亮棕红色，放大并带有一点点灵巧的倾斜 */
+.record-item:hover .record-icon { 
+    color: var(--bazi-accent-red); opacity: 1; transform: scale(1.2) rotate(-8deg); 
+}
+.record-title { font-size: 16px; font-weight: 600; color: var(--bazi-text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.3s ease;}
+
 
 /* 🌟 空状态：热茶/咖啡 SVG 居中显示 🌟 */
 .empty-state-container {
-    flex: 1; /* 撑满剩余空间，实现绝对垂直居中 */
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
     min-height: 200px; gap: 16px;
     opacity: 0; animation: listWave 0.6s ease forwards;
 }
@@ -158,10 +172,8 @@
     color: var(--bazi-text-muted); opacity: 0.25;
     transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
-/* 鼠标放上去时，咖啡杯会微微倾斜并点亮为棕红色 */
 .empty-state-container:hover .empty-state-svg {
-    transform: scale(1.05) rotate(-4deg);
-    color: var(--bazi-accent-red); opacity: 0.6;
+    transform: scale(1.05) rotate(-4deg); color: var(--bazi-accent-red); opacity: 0.6;
 }
 .empty-state-text { font-size: 15px; color: var(--bazi-text-muted); letter-spacing: 0.05em; font-weight: 500; opacity: 0.9; }
 
@@ -208,3 +220,7 @@
 .suggest-item { padding: 14px 16px; font-size: 14px; font-weight: 500; color: var(--text-normal); cursor: pointer; border-bottom: 1px solid rgba(0,0,0,0.03); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: 0.2s; }
 .suggest-item:last-child { border-bottom: none; }
 .suggest-item:hover, .suggest-item:active { background: rgba(138, 31, 31, 0.1); color: var(--bazi-accent-red); }
+
+@media (max-width: 480px) {
+    .modal.ios-glass-modal { width: 92vw !important; align-self: flex-start !important; margin-top: 5vh !important; max-height: 50vh !important; }
+}
