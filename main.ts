@@ -69,8 +69,10 @@ class DashboardView extends ItemView {
 
         const now = new Date();
         const lunarNow = Lunar.fromDate(now);
-        const baziNowStr = `${lunarNow.getYearInGanZhi()}年 · ${lunarNow.getMonthInGanZhi()}月 · ${lunarNow.getDayInGanZhi()}日 · ${lunarNow.getTimeInGanZhi()}时`;
-        header.createEl('h1', { text: baziNowStr, cls: 'baseline-title bazi-title' });
+        
+        // 🌟 核心排版：注入八字角标与分隔符 span 🌟
+        const baziEl = header.createEl('h1', { cls: 'baseline-title bazi-title' });
+        baziEl.innerHTML = `${lunarNow.getYearInGanZhi()}<span class="bazi-unit">年</span><span class="bazi-sep">·</span>${lunarNow.getMonthInGanZhi()}<span class="bazi-unit">月</span><span class="bazi-sep">·</span>${lunarNow.getDayInGanZhi()}<span class="bazi-unit">日</span><span class="bazi-sep">·</span>${lunarNow.getTimeInGanZhi()}<span class="bazi-unit">时</span>`;
 
         const plusBtn = headerRow.createEl('span', { text: '+', cls: 'floating-plus-btn' });
         this.plusMenu = headerRow.createDiv({ cls: 'plus-dropdown' });
@@ -182,7 +184,6 @@ class DashboardView extends ItemView {
                 <div class="record-list-lunar">${baziDay}</div>
             `;
             
-            // 空状态：精致的 SVG 热茶/咖啡插画
             const emptyState = this.listScrollArea.createDiv({ cls: 'empty-state-container' });
             emptyState.innerHTML = `
                 <div class="empty-state-svg">
@@ -208,10 +209,8 @@ class DashboardView extends ItemView {
         files.forEach((file, index) => {
             const item = this.listScrollArea.createDiv({ cls: 'record-item' });
             
-            // 🌟 核心：为每个项目分配延迟，实现更舒缓的波浪级联动画 🌟
             item.style.animationDelay = `${index * 0.06}s`;
             
-            // 🌟 注入极简高级的线框羽毛 (Quill) SVG 图标 🌟
             const iconWrap = item.createDiv({ cls: 'record-icon' });
             iconWrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>`;
             
