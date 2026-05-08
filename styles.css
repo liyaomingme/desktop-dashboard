@@ -1,5 +1,5 @@
 /* =========================================
-   🌟 全局：高级哑光棕红 & 桌面级双栏排版 🌟
+   🌟 全局核心：哑光棕红 & 高级感定义 🌟
 ========================================= */
 .dashboard-container {
     --bazi-accent-red: #8A1F1F;   /* 强调色：深棕红 (Oxblood) */
@@ -29,10 +29,15 @@
 .baseline-header { display: flex; flex-direction: column; gap: 6px; }
 .baseline-date { font-size: 14px; font-weight: 700; color: var(--bazi-text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
 
-/* 八字标题：加黑加粗 */
+/* 🌟 核心进化：八字缩小，更换传统楷体/宋体 🌟 */
 .baseline-title.bazi-title { 
-    margin: 0; font-size: 32px; font-weight: 800; color: var(--bazi-text-main); 
-    letter-spacing: 0.05em; line-height: 1; white-space: nowrap; 
+    margin: 0; 
+    font-size: 24px; /* 缩小字号 */
+    font-weight: 600; /* 配合宋体调整字重 */
+    color: var(--bazi-text-main); 
+    letter-spacing: 0.08em; line-height: 1; white-space: nowrap; 
+    /* 跨平台的传统字体栈：优先楷体，其次宋体 */
+    font-family: "STKaiti", "KaiTi", "Songti SC", "Noto Serif SC", "SimSun", serif;
 }
 
 /* "+" 按钮 */
@@ -61,20 +66,18 @@
 .dropdown-item:hover { background: rgba(138, 31, 31, 0.08); color: var(--bazi-accent-red); }
 
 /* =========================================
-   🌟 核心进化：桌面级双栏 Grid 架构 🌟
+   🌟 桌面级双栏 Grid 架构 🌟
 ========================================= */
 .desktop-grid-container {
     display: grid; 
-    grid-template-columns: minmax(360px, 420px) minmax(340px, 1fr); /* 左侧日历固定，右侧列表自适应 */
+    grid-template-columns: minmax(360px, 420px) minmax(340px, 1fr);
     gap: 32px; align-items: flex-start; margin-top: 10px;
 }
 
-/* 屏幕太小（竖屏平板）时自动回退为上下排版 */
 @media (max-width: 800px) {
     .desktop-grid-container { grid-template-columns: 1fr; }
 }
 
-/* 毛玻璃高级卡片 */
 .glass-card {
     background: rgba(255, 255, 255, 0.7) !important; 
     backdrop-filter: saturate(180%) blur(50px) !important; -webkit-backdrop-filter: saturate(180%) blur(50px) !important;
@@ -133,7 +136,9 @@
 .calendar-cell.level-4::before { background-color: var(--cal-level-4) !important; }
 .calendar-cell[class*="level-"] .cal-date-num, .calendar-cell[class*="level-"] .cal-lunar-text { color: #FFFFFF !important; opacity: 1 !important;}
 
-/* --- 平铺足迹列表 --- */
+/* =========================================
+   🌟 核心微交互：列表波浪动画与空状态 🌟
+========================================= */
 .record-list-wrapper { width: 100%; display: flex; flex-direction: column; height: 100%;}
 .record-list-header { margin-bottom: 20px; padding-left: 4px; }
 .record-list-date { font-size: 22px; font-weight: 800; color: var(--bazi-text-main); display: flex; align-items: baseline; gap: 10px;}
@@ -145,99 +150,91 @@
 .record-list-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
 .theme-dark .record-list-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
 
+/* 🌟 波浪级联动画定义 (幅度极小) 🌟 */
+@keyframes listWave {
+    0% { opacity: 0; transform: translateY(12px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
 .record-item {
     background: transparent !important; border-radius: 12px; padding: 16px 14px;
     display: flex; align-items: center; gap: 14px; cursor: pointer;
     border-bottom: 1px solid rgba(150, 150, 150, 0.12) !important; transition: all 0.2s ease;
+    
+    /* 初始透明，由 JS 注入 delay 控制波浪执行 */
+    opacity: 0;
+    animation: listWave 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 .record-item:last-child { border-bottom: none !important; }
 .theme-dark .record-item { border-bottom-color: rgba(255, 255, 255, 0.08) !important; }
-.record-item:hover { background: rgba(120, 120, 120, 0.06) !important; transform: translateX(6px); }
+.record-item:hover { background: rgba(120, 120, 120, 0.06) !important; transform: translateX(6px) !important; } /* hover 也会覆盖 transform，加 important 防止跳动 */
 .record-icon { font-size: 20px; color: var(--bazi-text-muted); opacity: 0.6; }
 .record-title { font-size: 16px; font-weight: 600; color: var(--bazi-text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 
+/* 🌟 空状态：禅意呼吸灯动效 🌟 */
+.empty-state-container {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 220px; gap: 18px;
+    opacity: 0; animation: listWave 0.6s ease forwards;
+}
+.empty-state-icon {
+    width: 52px; height: 52px; border-radius: 50%;
+    /* 使用深邃红渐变 */
+    background: linear-gradient(135deg, var(--bazi-accent-red), var(--cal-level-1));
+    box-shadow: 0 8px 24px rgba(138, 31, 31, 0.3);
+    /* 呼吸动效：缩放+上下浮动 */
+    animation: zenBreathe 3.5s ease-in-out infinite alternate;
+}
+@keyframes zenBreathe {
+    0% { transform: scale(0.9) translateY(0); opacity: 0.6; box-shadow: 0 4px 12px rgba(138, 31, 31, 0.1); }
+    100% { transform: scale(1.05) translateY(-8px); opacity: 1; box-shadow: 0 12px 32px rgba(138, 31, 31, 0.4); }
+}
+.empty-state-text { font-size: 14px; color: var(--bazi-text-muted); letter-spacing: 0.1em; font-weight: 500; }
 
 /* =========================================
-   🌟 核心进化：真正的苹果毛玻璃弹窗 (彻底居中，不拉伸) 🌟
+   🌟 弹窗与设置 (保持不变) 🌟
 ========================================= */
-.ios-glass-modal-container .modal-bg {
-    backdrop-filter: blur(20px) saturate(150%) !important; -webkit-backdrop-filter: blur(20px) saturate(150%) !important;
-    background-color: rgba(0, 0, 0, 0.4) !important; transition: all 0.4s ease;
-}
-
-@keyframes silkyModalPopup {
-    0% { opacity: 0; transform: scale(0.95) translateY(20px); }
-    100% { opacity: 1; transform: scale(1) translateY(0); }
-}
+.ios-glass-modal-container .modal-bg { backdrop-filter: blur(20px) saturate(150%) !important; background-color: rgba(0, 0, 0, 0.4) !important; transition: all 0.4s ease; }
+@keyframes silkyModalPopup { 0% { opacity: 0; transform: scale(0.95) translateY(20px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
 
 .modal.ios-glass-modal {
     animation: silkyModalPopup 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
-    background: rgba(255, 255, 255, 0.95) !important;
-    backdrop-filter: blur(50px) saturate(200%) !important; 
+    background: rgba(255, 255, 255, 0.95) !important; backdrop-filter: blur(50px) saturate(200%) !important; 
     border-radius: 24px !important; border: 1px solid rgba(255, 255, 255, 0.9) !important;
     box-shadow: 0 40px 80px rgba(0,0,0,0.2) !important; padding: 32px 28px !important; 
-    
-    /* 🌟 电脑/平板端核心：固定宽度完美居中，彻底告别拉长 🌟 */
-    display: flex !important; flex-direction: column !important; 
-    align-self: center !important; margin: auto !important;
+    display: flex !important; flex-direction: column !important; align-self: center !important; margin: auto !important;
     width: 440px !important; max-width: 90vw !important; max-height: 85vh !important; 
 }
 .theme-dark .modal.ios-glass-modal { background: rgba(30, 30, 30, 0.95) !important; border: 1px solid rgba(255, 255, 255, 0.15) !important; }
-
-/* 🌟 允许弹窗内部自由滚动，不怕键盘遮挡 🌟 */
-.ios-glass-modal .modal-content { 
-    overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; 
-    scrollbar-width: none; flex: 1 1 auto; padding-right: 4px; padding-bottom: 8px;
-}
+.ios-glass-modal .modal-content { overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; scrollbar-width: none; flex: 1 1 auto; padding-right: 4px; padding-bottom: 8px; }
 .ios-glass-modal .modal-content::-webkit-scrollbar { display: none; }
-
 .ios-glass-modal h3 { font-weight: 800 !important; font-size: 22px; text-align: center; margin-top: 0; margin-bottom: 24px; color: var(--text-normal); }
 .ios-glass-modal .setting-item { border: none !important; padding: 8px 0 !important; flex-direction: column; align-items: flex-start; gap: 6px; }
 .ios-glass-modal .setting-item-info { width: 100%; margin: 0 !important; }
 .ios-glass-modal .setting-item-name { font-weight: 600 !important; font-size: 14px; color: var(--text-muted); margin-left: 4px;}
 .ios-glass-modal .setting-item-control { width: 100%; justify-content: flex-start; flex-direction: column; align-items: stretch; }
 
-/* 极致清晰的输入框 */
 .ios-glass-modal input[type="text"] {
-    border-radius: 12px !important; border: 1px solid rgba(0,0,0,0.1) !important; 
-    background: rgba(0, 0, 0, 0.03) !important; padding: 14px 16px !important; font-size: 15px !important; width: 100%;
-    color: var(--text-normal) !important; font-weight: 500 !important; transition: all 0.3s ease;
+    border-radius: 12px !important; border: 1px solid rgba(0,0,0,0.1) !important; background: rgba(0, 0, 0, 0.03) !important; padding: 14px 16px !important; font-size: 15px !important; width: 100%; color: var(--text-normal) !important; font-weight: 500 !important; transition: all 0.3s ease;
 }
 .theme-dark .ios-glass-modal input[type="text"] { background: rgba(255, 255, 255, 0.08) !important; border-color: rgba(255,255,255,0.1) !important;}
 .ios-glass-modal input[type="text"]:focus { border-color: var(--bazi-accent-red) !important; background: transparent !important; box-shadow: 0 0 0 2px rgba(138, 31, 31, 0.15) !important;}
 
-/* =========================================
-   🌟 终极修复：强制高对比度的纯黑/纯白按钮 🌟
-========================================= */
 .ios-glass-modal button.mod-cta, .ios-glass-modal button {
-    background-color: #111111 !important; color: #FFFFFF !important; opacity: 1 !important;
-    border-radius: 12px !important; padding: 16px !important; font-size: 16px !important; font-weight: 700 !important; 
-    width: 100% !important; margin-top: 20px !important; border: none !important; text-shadow: none !important;
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s !important; 
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2) !important;
+    background-color: #111111 !important; color: #FFFFFF !important; opacity: 1 !important; border-radius: 12px !important; padding: 16px !important; font-size: 16px !important; font-weight: 700 !important; width: 100% !important; margin-top: 20px !important; border: none !important; text-shadow: none !important; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s !important; box-shadow: 0 8px 24px rgba(0,0,0,0.2) !important;
 }
-.theme-dark .ios-glass-modal button.mod-cta, .theme-dark .ios-glass-modal button {
-    background-color: #FFFFFF !important; color: #111111 !important; box-shadow: 0 8px 24px rgba(255,255,255,0.15) !important;
-}
+.theme-dark .ios-glass-modal button.mod-cta, .theme-dark .ios-glass-modal button { background-color: #FFFFFF !important; color: #111111 !important; box-shadow: 0 8px 24px rgba(255,255,255,0.15) !important; }
 .ios-glass-modal button:active { transform: scale(0.96) !important; }
 
-
-/* =========================================
-   🌟 文件夹下拉选择器 (内嵌手风琴式，绝不遮挡) 🌟
-========================================= */
-.folder-suggest-wrapper {
-    width: 100%; margin-top: 8px; background: rgba(0, 0, 0, 0.03); border-radius: 12px; border: 1px solid rgba(0, 0, 0, 0.05);
-    max-height: 0; opacity: 0; overflow: hidden; /* 高度动画 */
-    transition: max-height 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease;
-}
+.folder-suggest-wrapper { width: 100%; margin-top: 8px; background: rgba(0, 0, 0, 0.03); border-radius: 12px; border: 1px solid rgba(0, 0, 0, 0.05); max-height: 0; opacity: 0; overflow: hidden; transition: max-height 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease; }
 .theme-dark .folder-suggest-wrapper { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); }
-.folder-suggest-wrapper.is-open { 
-    max-height: 220px; opacity: 1; 
-    overflow-y: auto; -webkit-overflow-scrolling: touch; 
-} 
+.folder-suggest-wrapper.is-open { max-height: 220px; opacity: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; } 
 .folder-suggest-wrapper::-webkit-scrollbar { width: 6px; }
 .folder-suggest-wrapper::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
-
 .suggest-item { padding: 14px 16px; font-size: 14px; font-weight: 500; color: var(--text-normal); cursor: pointer; border-bottom: 1px solid rgba(0,0,0,0.03); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: 0.2s; }
 .suggest-item:last-child { border-bottom: none; }
 .suggest-item:hover, .suggest-item:active { background: rgba(138, 31, 31, 0.1); color: var(--bazi-accent-red); }
+
+@media (max-width: 480px) {
+    .modal.ios-glass-modal { width: 92vw !important; align-self: flex-start !important; margin-top: 5vh !important; max-height: 50vh !important; }
+}
