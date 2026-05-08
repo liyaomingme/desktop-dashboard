@@ -1,5 +1,4 @@
-import { Plugin, WorkspaceLeaf, ItemView, TFolder, Modal, Setting, PluginSettingTab, App, TFile } from 'obsidian';
-import moment from 'moment';
+import { Plugin, WorkspaceLeaf, ItemView, TFolder, Modal, Setting, PluginSettingTab, App, TFile, moment } from 'obsidian';
 import { Lunar } from 'lunar-javascript';
 
 const VIEW_TYPE_DASHBOARD = "mobile-dashboard-view";
@@ -40,10 +39,9 @@ export default class DashboardPlugin extends Plugin {
 
 class DashboardView extends ItemView {
     plugin: DashboardPlugin;
-    currentMonth: moment.Moment;
+    currentMonth: any;
     fileDataMap: Record<string, TFile[]> = {};
     
-    // 核心组件 DOM
     calendarContainer: HTMLElement;
     listWrapper: HTMLElement;
     listScrollArea: HTMLElement;
@@ -63,9 +61,9 @@ class DashboardView extends ItemView {
         const container = this.containerEl.children[1];
         container.empty();
         container.addClass('dashboard-container');
+
         this.buildFileDataMap();
 
-        // 1. Header
         const headerRow = container.createDiv({ cls: 'dashboard-header-row' });
         const header = headerRow.createDiv({ cls: 'baseline-header' });
         header.createDiv({ text: moment().format('M月D日 dddd'), cls: 'baseline-date' });
@@ -77,14 +75,11 @@ class DashboardView extends ItemView {
         const plusBtn = headerRow.createEl('span', { text: '+', cls: 'floating-plus-btn' });
         plusBtn.onclick = () => this.showActionMenu(plusBtn);
 
-        // 2. 🌟 响应式分栏主体 🌟
         const mainContent = container.createDiv({ cls: 'dashboard-main-content' });
 
-        // 左栏/主栏：日历
         const calSection = mainContent.createDiv({ cls: 'dashboard-data-section' });
         this.calendarContainer = calSection.createDiv({ cls: 'heatmap-calendar-wrapper' });
 
-        // 右栏：内容列表
         this.listWrapper = mainContent.createDiv({ cls: 'record-list-wrapper' });
         this.listHeader = this.listWrapper.createDiv({ cls: 'record-list-header' });
         this.listScrollArea = this.listWrapper.createDiv({ cls: 'record-list-scroll' });
@@ -93,7 +88,6 @@ class DashboardView extends ItemView {
     }
 
     showActionMenu(anchor: HTMLElement) {
-        // 创建一个简单的毛玻璃下拉菜单
         const menu = this.containerEl.createDiv({ cls: 'plus-dropdown is-open' });
         this.plugin.settings.actions.forEach(action => {
             const item = menu.createDiv({ cls: 'dropdown-item', text: action.name });
@@ -120,7 +114,6 @@ class DashboardView extends ItemView {
         const month = this.currentMonth.month();
         const firstDay = moment([year, month, 1]).day();
 
-        // 导航
         const nav = this.calendarContainer.createDiv({ cls: 'month-nav' });
         nav.createEl('span', { text: '‹', cls: 'month-nav-btn back-arrow' }).onclick = () => { this.currentMonth.subtract(1, 'M'); this.renderCalendar('left'); };
         nav.createSpan({ text: this.currentMonth.format('YYYY年 M月'), cls: 'month-label' });
