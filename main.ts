@@ -182,7 +182,7 @@ class DashboardView extends ItemView {
                 <div class="record-list-lunar">${baziDay}</div>
             `;
             
-            // 🌟 空状态：注入热茶/咖啡 SVG 插画与居中排版 🌟
+            // 空状态：精致的 SVG 热茶/咖啡插画
             const emptyState = this.listScrollArea.createDiv({ cls: 'empty-state-container' });
             emptyState.innerHTML = `
                 <div class="empty-state-svg">
@@ -208,12 +208,12 @@ class DashboardView extends ItemView {
         files.forEach((file, index) => {
             const item = this.listScrollArea.createDiv({ cls: 'record-item' });
             
-            // 🌟 为每个项目分配延迟，实现水波纹级联动画 🌟
-            item.style.animationDelay = `${index * 0.04}s`;
+            // 🌟 核心：为每个项目分配延迟，实现更舒缓的波浪级联动画 🌟
+            item.style.animationDelay = `${index * 0.06}s`;
             
-            // 🌟 注入极简高级的文档 SVG 图标，彻底替换 Emoji 🌟
+            // 🌟 注入极简高级的线框羽毛 (Quill) SVG 图标 🌟
             const iconWrap = item.createDiv({ cls: 'record-icon' });
-            iconWrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`;
+            iconWrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>`;
             
             item.createDiv({ text: file.basename, cls: 'record-title' });
             item.onclick = async () => { await this.app.workspace.getLeaf(true).openFile(file); };
