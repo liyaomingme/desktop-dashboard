@@ -1,216 +1,247 @@
-import { Plugin, WorkspaceLeaf, ItemView, TFile, TFolder, Modal, Setting } from 'obsidian';
-import { Chart, registerables } from 'chart.js';
+import { Plugin, WorkspaceLeaf, ItemView, TFolder, Modal, Setting, PluginSettingTab, App, TFile } from 'obsidian';
 import moment from 'moment';
-
-Chart.register(...registerables);
+import { Lunar } from 'lunar-javascript';
 
 const VIEW_TYPE_DASHBOARD = "mobile-dashboard-view";
 
+interface ActionConfig { name: string; folder: string; template: string; }
+interface DashboardSettings { openOnStartup: boolean; actions: ActionConfig[]; }
+
+const DEFAULT_SETTINGS: DashboardSettings = {
+    openOnStartup: false,
+    actions: [
+        { name: '新建日记', folder: '日记/{{YYYY}}/{{MM}}', template: "---\ntype: diary\ndate: {{DATE}}\nbazi: {{BAZI}}\n---\n\n" },
+        { name: '沉淀知识', folder: '知识库/{{YYYY}}', template: "---\ntype: knowledge\ndate: {{DATE}}\nbazi: {{BAZI}}\n---\n\n" },
+        { name: '灵感碎片', folder: '灵感捕捉', template: "---\ntype: idea\ndate: {{DATE}}\nbazi: {{BAZI}}\n---\n\n" }
+    ]
+}
+
 export default class DashboardPlugin extends Plugin {
+    settings: DashboardSettings;
     async onload() {
+        await this.loadSettings();
         this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
-
-        this.addRibbonIcon('layout-dashboard', '打开快捷主页', () => {
-            this.activateView();
-        });
-
-        this.addCommand({
-            id: 'show-dashboard',
-            name: '显示主页看板',
-            callback: () => this.activateView(),
-        });
+        this.addRibbonIcon('layout-dashboard', '控制中心', () => this.activateView());
+        this.addCommand({ id: 'show-dashboard', name: '显示控制中心', callback: () => this.activateView() });
+        this.addSettingTab(new DashboardSettingTab(this.app, this));
+        this.app.workspace.onLayoutReady(() => { if (this.settings.openOnStartup) this.activateView(); });
     }
-
+    async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
+    async saveSettings() { await this.saveData(this.settings); }
     async activateView() {
-        const { workspace } = this.app;
-        let leaf = workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD)[0];
-
+        let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD)[0];
         if (!leaf) {
-            leaf = workspace.getLeaf(true);
+            leaf = this.app.workspace.getLeaf(true);
             await leaf.setViewState({ type: VIEW_TYPE_DASHBOARD, active: true });
         }
-        workspace.revealLeaf(leaf);
+        this.app.workspace.revealLeaf(leaf);
     }
 }
 
 class DashboardView extends ItemView {
     plugin: DashboardPlugin;
-    chart: any;
+    currentMonth: moment.Moment;
+    fileDataMap: Record<string, TFile[]> = {};
+    
+    // 核心组件 DOM
+    calendarContainer: HTMLElement;
+    listWrapper: HTMLElement;
+    listScrollArea: HTMLElement;
+    listHeader: HTMLElement;
 
     constructor(leaf: WorkspaceLeaf, plugin: DashboardPlugin) {
         super(leaf);
         this.plugin = plugin;
+        this.currentMonth = moment().startOf('month');
     }
 
     getViewType() { return VIEW_TYPE_DASHBOARD; }
-    getDisplayText() { return "快捷主页"; }
+    getDisplayText() { return "控制中心"; }
     getIcon() { return "layout-dashboard"; }
 
     async onOpen() {
         const container = this.containerEl.children[1];
         container.empty();
         container.addClass('dashboard-container');
+        this.buildFileDataMap();
 
-        // Header
-        const header = container.createDiv({ cls: 'dashboard-header' });
-        header.createEl('h2', { text: '✨ 控制中心' });
-        header.createEl('p', { text: '快速记录，回顾成长' });
+        // 1. Header
+        const headerRow = container.createDiv({ cls: 'dashboard-header-row' });
+        const header = headerRow.createDiv({ cls: 'baseline-header' });
+        header.createDiv({ text: moment().format('M月D日 dddd'), cls: 'baseline-date' });
+        const now = new Date();
+        const bazi = Lunar.fromDate(now);
+        const baziStr = `${bazi.getYearInGanZhi()}年 · ${bazi.getMonthInGanZhi()}月 · ${bazi.getDayInGanZhi()}日 · ${bazi.getTimeInGanZhi()}时`;
+        header.createEl('h1', { text: baziStr, cls: 'baseline-title bazi-title' });
 
-        // Action Grid
-        const actions = container.createDiv({ cls: 'dashboard-actions' });
-        
-        this.createActionCard(actions, '📝', '写日记', () => this.promptNewNote('diary'));
-        this.createActionCard(actions, '💡', '记知识', () => this.promptNewNote('knowledge'));
+        const plusBtn = headerRow.createEl('span', { text: '+', cls: 'floating-plus-btn' });
+        plusBtn.onclick = () => this.showActionMenu(plusBtn);
 
-        // Chart Section
-        const chartBox = container.createDiv({ cls: 'dashboard-chart-container' });
-        const controls = chartBox.createDiv({ cls: 'chart-controls' });
-        
-        const weekBtn = controls.createEl('button', { text: '周', cls: 'chart-btn' });
-        const monthBtn = controls.createEl('button', { text: '月', cls: 'chart-btn' });
+        // 2. 🌟 响应式分栏主体 🌟
+        const mainContent = container.createDiv({ cls: 'dashboard-main-content' });
 
-        const canvas = chartBox.createEl('canvas') as HTMLCanvasElement;
-        
-        weekBtn.onclick = () => this.renderChart(canvas, 'week');
-        monthBtn.onclick = () => this.renderChart(canvas, 'month');
+        // 左栏/主栏：日历
+        const calSection = mainContent.createDiv({ cls: 'dashboard-data-section' });
+        this.calendarContainer = calSection.createDiv({ cls: 'heatmap-calendar-wrapper' });
 
-        // Initial Chart
-        this.renderChart(canvas, 'week');
+        // 右栏：内容列表
+        this.listWrapper = mainContent.createDiv({ cls: 'record-list-wrapper' });
+        this.listHeader = this.listWrapper.createDiv({ cls: 'record-list-header' });
+        this.listScrollArea = this.listWrapper.createDiv({ cls: 'record-list-scroll' });
+
+        this.renderCalendar('none');
     }
 
-    createActionCard(parent: HTMLElement, icon: string, title: string, onClick: () => void) {
-        const card = parent.createDiv({ cls: 'dashboard-card' });
-        card.createDiv({ text: icon, cls: 'dashboard-card-icon' });
-        card.createDiv({ text: title, cls: 'dashboard-card-title' });
-        card.onclick = onClick;
+    showActionMenu(anchor: HTMLElement) {
+        // 创建一个简单的毛玻璃下拉菜单
+        const menu = this.containerEl.createDiv({ cls: 'plus-dropdown is-open' });
+        this.plugin.settings.actions.forEach(action => {
+            const item = menu.createDiv({ cls: 'dropdown-item', text: action.name });
+            item.onclick = () => { menu.remove(); this.promptNewNote(action); };
+        });
+        const closeMenu = (e: MouseEvent) => { if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener('click', closeMenu); } };
+        setTimeout(() => document.addEventListener('click', closeMenu), 10);
     }
 
-    async promptNewNote(type: string) {
-        new QuickNoteModal(this.app, type, async (title, date) => {
-            const folderPath = type === 'diary' 
-                ? `日记/${moment(date).format('YYYY/MM')}`
-                : `知识库`;
-            
-            await this.ensureFolder(folderPath);
-            const fileName = type === 'diary' 
-                ? `${folderPath}/${moment(date).format('DD')}-${title}.md`
-                : `${folderPath}/${title}.md`;
+    buildFileDataMap() {
+        this.fileDataMap = {};
+        this.app.vault.getMarkdownFiles().forEach(file => {
+            const cache = this.app.metadataCache.getFileCache(file);
+            const dateStr = cache?.frontmatter?.date || moment(file.stat.ctime).format('YYYY-MM-DD');
+            const key = moment(dateStr).format('YYYY-MM-DD');
+            if (!this.fileDataMap[key]) this.fileDataMap[key] = [];
+            this.fileDataMap[key].push(file);
+        });
+    }
 
-            const content = `---\ntype: ${type}\ndate: ${date}\n---\n\n# ${title}\n\n`;
+    renderCalendar(dir: 'left' | 'right' | 'none') {
+        this.calendarContainer.empty();
+        const year = this.currentMonth.year();
+        const month = this.currentMonth.month();
+        const firstDay = moment([year, month, 1]).day();
+
+        // 导航
+        const nav = this.calendarContainer.createDiv({ cls: 'month-nav' });
+        nav.createEl('span', { text: '‹', cls: 'month-nav-btn back-arrow' }).onclick = () => { this.currentMonth.subtract(1, 'M'); this.renderCalendar('left'); };
+        nav.createSpan({ text: this.currentMonth.format('YYYY年 M月'), cls: 'month-label' });
+        nav.createEl('span', { text: '›', cls: 'month-nav-btn next-arrow' }).onclick = () => { this.currentMonth.add(1, 'M'); this.renderCalendar('right'); };
+
+        const animWrapper = this.calendarContainer.createDiv({ cls: 'calendar-anim-wrapper' });
+        if (dir === 'left') animWrapper.addClass('slide-in-left');
+        if (dir === 'right') animWrapper.addClass('slide-in-right');
+
+        const grid = animWrapper.createDiv({ cls: 'calendar-grid' });
+        ['日','一','二','三','四','五','六'].forEach(d => grid.createDiv({ text: d, cls: 'calendar-weekdays' }));
+        
+        for (let i = 0; i < firstDay; i++) grid.createDiv({ cls: 'calendar-cell empty' });
+        
+        for (let d = 1; d <= this.currentMonth.daysInMonth(); d++) {
+            const dateKey = moment([year, month, d]).format('YYYY-MM-DD');
+            const files = this.fileDataMap[dateKey] || [];
+            const cell = grid.createDiv({ cls: 'calendar-cell' });
+            if (files.length > 0) cell.addClass(`level-${Math.min(files.length, 4)}`);
             
-            try {
-                const file = await this.app.vault.create(fileName, content);
-                const leaf = this.app.workspace.getLeaf(false);
-                await leaf.openFile(file);
-            } catch (e) {
-                console.error("创建失败", e);
-            }
+            const lunar = Lunar.fromDate(moment([year, month, d]).toDate());
+            cell.createDiv({ text: d.toString(), cls: 'cal-date-num' });
+            cell.createDiv({ text: lunar.getDay() === 1 ? lunar.getMonthInChinese() + '月' : lunar.getDayInChinese(), cls: 'cal-lunar-text' });
+            
+            cell.onclick = () => {
+                this.calendarContainer.findAll('.active-selection').forEach(el => el.removeClass('active-selection'));
+                cell.addClass('active-selection');
+                this.showList(dateKey, files, lunar);
+            };
+        }
+    }
+
+    showList(date: string, files: TFile[], lunar: Lunar) {
+        this.listScrollArea.empty();
+        this.listWrapper.addClass('is-open');
+        this.listHeader.innerHTML = `<div class="record-list-date">${date} <span class="record-list-count">${files.length} 篇</span></div>
+                                     <div class="record-list-lunar">${lunar.getYearInGanZhi()}年 · ${lunar.getMonthInGanZhi()}月 · ${lunar.getDayInGanZhi()}日</div>`;
+        
+        files.forEach(f => {
+            const item = this.listScrollArea.createDiv({ cls: 'record-item' });
+            item.createDiv({ text: '📄', cls: 'record-icon' });
+            item.createDiv({ text: f.basename, cls: 'record-title' });
+            item.onclick = () => this.app.workspace.getLeaf(true).openFile(f);
+        });
+    }
+
+    async promptNewNote(config: ActionConfig) {
+        new QuickNoteModal(this.app, config, async (title, date, folder) => {
+            const fullDate = moment(date).toDate();
+            fullDate.setHours(new Date().getHours());
+            const l = Lunar.fromDate(fullDate);
+            const bazi = `${l.getYearInGanZhi()}年 ${l.getMonthInGanZhi()}月 ${l.getDayInGanZhi()}日 ${l.getTimeInGanZhi()}时`;
+            
+            const content = config.template.replace(/\{\{DATE\}\}/g, date).replace(/\{\{BAZI\}\}/g, bazi);
+            await this.ensureFolder(folder);
+            const file = await this.app.vault.create(`${folder}/${title}.md`, content);
+            this.app.workspace.getLeaf(true).openFile(file);
         }).open();
     }
 
     async ensureFolder(path: string) {
-        const folders = path.split('/');
-        let currentPath = "";
-        for (const folder of folders) {
-            currentPath += (currentPath === "" ? "" : "/") + folder;
-            if (!(this.app.vault.getAbstractFileByPath(currentPath) instanceof TFolder)) {
-                await this.app.vault.createFolder(currentPath);
-            }
+        let cur = "";
+        for (const f of path.split('/')) {
+            cur += (cur === "" ? "" : "/") + f;
+            if (!this.app.vault.getAbstractFileByPath(cur)) await this.app.vault.createFolder(cur);
         }
-    }
-
-    renderChart(canvas: HTMLCanvasElement, range: 'week' | 'month') {
-        const ctx = canvas.getContext('2d');
-        if (this.chart) this.chart.destroy();
-
-        const dataMap = this.getNoteStats(range);
-        
-        this.chart = new Chart(ctx!, {
-            type: 'line',
-            data: {
-                labels: Object.keys(dataMap),
-                datasets: [{
-                    label: '笔记数量',
-                    data: Object.values(dataMap),
-                    borderColor: '#7575ff',
-                    tension: 0.3,
-                    fill: true,
-                    backgroundColor: 'rgba(117, 117, 255, 0.1)'
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-            }
-        });
-    }
-
-    getNoteStats(range: 'week' | 'month') {
-        const files = this.app.vault.getMarkdownFiles();
-        const stats: { [key: string]: number } = {};
-        
-        const format = range === 'week' ? 'ddd' : 'MM-DD';
-        const limit = range === 'week' ? 7 : 30;
-
-        // Initialize last X days
-        for (let i = limit - 1; i >= 0; i--) {
-            const d = moment().subtract(i, 'days').format(format);
-            stats[d] = 0;
-        }
-
-        files.forEach(file => {
-            const cache = this.app.metadataCache.getFileCache(file);
-            const dateStr = cache?.frontmatter?.date || moment(file.stat.ctime).format('YYYY-MM-DD');
-            const fileDate = moment(dateStr);
-            
-            if (fileDate.isAfter(moment().subtract(limit, 'days'))) {
-                const label = fileDate.format(format);
-                if (stats[label] !== undefined) stats[label]++;
-            }
-        });
-
-        return stats;
     }
 }
 
 class QuickNoteModal extends Modal {
-    title: string = "";
-    date: string = moment().format('YYYY-MM-DD');
-    type: string;
-    onSubmit: (title: string, date: string) => void;
+    title: string; date: string; folder: string; config: ActionConfig;
+    onSubmit: (t: string, d: string, f: string) => void;
 
-    constructor(app: any, type: string, onSubmit: (title: string, date: string) => void) {
+    constructor(app: App, config: ActionConfig, onSubmit: any) {
         super(app);
-        this.type = type;
+        this.config = config;
         this.onSubmit = onSubmit;
+        this.title = moment().format('MMDD') + "-";
+        this.date = moment().format('YYYY-MM-DD');
+        this.folder = config.folder.replace(/\{\{YYYY\}\}/g, moment().format('YYYY')).replace(/\{\{MM\}\}/g, moment().format('MM'));
     }
 
     onOpen() {
-        const { contentEl } = this;
-        contentEl.createEl('h3', { text: `新建${this.type === 'diary' ? '日记' : '知识笔记'}` });
+        const { contentEl, modalEl } = this;
+        modalEl.addClass('ios-glass-modal');
+        contentEl.createEl('h3', { text: this.config.name });
 
-        new Setting(contentEl)
-            .setName('标题')
-            .addText(text => text.onChange(value => this.title = value));
-
-        if (this.type === 'diary') {
-            new Setting(contentEl)
-                .setName('日期')
-                .addText(text => {
-                    text.setValue(this.date);
-                    text.onChange(value => this.date = value);
+        new Setting(contentEl).setName('记录标题').addText(t => { t.setValue(this.title); t.onChange(v => this.title = v); });
+        new Setting(contentEl).setName('归档日期').addText(t => { t.setValue(this.date); t.onChange(v => this.date = v); });
+        
+        const folderWrapper = contentEl.createDiv({ cls: 'folder-suggest-wrapper' });
+        new Setting(contentEl).setName('保存路径 (点击查看)').addText(t => {
+            t.setValue(this.folder);
+            t.onChange(v => this.folder = v);
+            t.inputEl.onclick = () => {
+                folderWrapper.empty();
+                folderWrapper.toggleClass('is-open', true);
+                const folders = this.app.vault.getAllLoadedFiles().filter(f => f instanceof TFolder && f.path !== '/');
+                folders.forEach(f => {
+                    const item = folderWrapper.createDiv({ cls: 'suggest-item', text: f.path });
+                    item.onclick = () => { t.setValue(f.path); this.folder = f.path; folderWrapper.removeClass('is-open'); };
                 });
-        }
+            };
+        });
 
-        new Setting(contentEl)
-            .addButton(btn => btn
-                .setButtonText('确认创建')
-                .setCta()
-                .onClick(() => {
-                    if (!this.title) return;
-                    this.close();
-                    this.onSubmit(this.title, this.date);
-                }));
+        const btn = contentEl.createEl('button', { text: '确认创建', cls: 'mod-cta' });
+        btn.onclick = () => { this.close(); this.onSubmit(this.title, this.date, this.folder); };
+    }
+}
+
+class DashboardSettingTab extends PluginSettingTab {
+    plugin: DashboardPlugin;
+    constructor(app: App, plugin: DashboardPlugin) { super(app, plugin); this.plugin = plugin; }
+    display() {
+        const { containerEl } = this;
+        containerEl.empty();
+        new Setting(containerEl).setName('启动时自动打开').addToggle(t => t.setValue(this.plugin.settings.openOnStartup).onChange(v => { this.plugin.settings.openOnStartup = v; this.plugin.saveSettings(); }));
+        this.plugin.settings.actions.forEach((a, i) => {
+            new Setting(containerEl).setName(`类型 ${i+1} 名称`).addText(t => t.setValue(a.name).onChange(v => { a.name = v; this.plugin.saveSettings(); }));
+            new Setting(containerEl).setName(`保存路径`).addText(t => t.setValue(a.folder).onChange(v => { a.folder = v; this.plugin.saveSettings(); }));
+            new Setting(containerEl).setName(`默认模板`).addTextArea(t => t.setValue(a.template).onChange(v => { a.template = v; this.plugin.saveSettings(); }));
+        });
     }
 }
