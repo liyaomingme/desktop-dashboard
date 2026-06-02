@@ -70,7 +70,6 @@ class DashboardView extends ItemView {
         const now = new Date();
         const lunarNow = Lunar.fromDate(now);
         
-        // 🌟 核心排版：注入八字角标与分隔符 span 🌟
         const baziEl = header.createEl('h1', { cls: 'baseline-title bazi-title' });
         baziEl.innerHTML = `${lunarNow.getYearInGanZhi()}<span class="bazi-unit">年</span><span class="bazi-sep">·</span>${lunarNow.getMonthInGanZhi()}<span class="bazi-unit">月</span><span class="bazi-sep">·</span>${lunarNow.getDayInGanZhi()}<span class="bazi-unit">日</span><span class="bazi-sep">·</span>${lunarNow.getTimeInGanZhi()}<span class="bazi-unit">时</span>`;
 
@@ -109,16 +108,94 @@ class DashboardView extends ItemView {
         });
     }
 
+    // =========================================
+    // 🌟 核心引擎：全能日期嗅探器 🌟
+    // =========================================
     buildFileDataMap() {
         this.fileDataMap = {};
         this.app.vault.getMarkdownFiles().forEach(file => {
             const cache = this.app.metadataCache.getFileCache(file);
-            const dateStr = cache?.frontmatter?.date || moment(file.stat.ctime).format('YYYY-MM-DD');
-            const formatKey = moment(dateStr).format('YYYY-MM-DD');
+            
+            // 使用全新的强力日期提取引擎
+            const formatKey = this.extractDateFromFile(file, cache);
+            
             if (!this.fileDataMap[formatKey]) this.fileDataMap[formatKey] = [];
             this.fileDataMap[formatKey].push(file);
         });
+        
+        // 按时间倒序排列同一天的文章
+        for (const key in this.fileDataMap) { 
+            this.fileDataMap[key].sort((a, b) => b.stat.ctime - a.stat.ctime); 
+        }
     }
+
+    extractDateFromFile(file: TFile, cache: any): string {
+        let dateStr: string | null = null;
+        let yearContext = moment(file.stat.ctime).year(); 
+        
+        // 1. 智能推断：如果文件路径包含年份（如 "2026/05/"），以此作为缺省年份
+        const pathYearMatch = file.path.match(/(20\d{2})/);
+        if (pathYearMatch) {
+            yearContext = parseInt(pathYearMatch[1]);
+        }
+
+        // 2. 第一优先级：检索 YAML Frontmatter 中的 date 字段
+        if (cache?.frontmatter?.date) {
+            dateStr = String(cache.frontmatter.date).trim();
+            const parsed = this.parseLenientDate(dateStr, yearContext);
+            if (parsed) return parsed;
+        }
+
+        // 3. 第二优先级：直接从文件名 (basename) 中强行扣出日期
+        dateStr = file.basename.trim();
+        const parsedFilename = this.parseLenientDate(dateStr, yearContext);
+        if (parsedFilename) return parsedFilename;
+
+        // 4. 最后兜底：系统文件创建时间（防同步重置的最后防线）
+        return moment(file.stat.ctime).format('YYYY-MM-DD');
+    }
+
+    parseLenientDate(s: string, defaultYear: number): string | null {
+        s = s.trim();
+
+        // [格式A] 标准格式 (如 2026-05-08, 2026/05/08)
+        let m = moment(s, ["YYYY-MM-DD", "YYYY/MM/DD", "YYYY.MM.DD", "YYYY-MM-DDTHH:mm"], true);
+        if (m.isValid()) return m.format('YYYY-MM-DD');
+
+        // [格式B] 速记格式 MMDD (如 0531, 0602-标题)
+        // 严格限定开头必须是 01-12 月，且只能有4位连续数字
+        let mmddMatch = s.match(/^(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?:[^\d]|$)/);
+        if (mmddMatch) {
+            let mth = parseInt(mmddMatch[1]);
+            let d = parseInt(mmddMatch[2]);
+            return moment(`${defaultYear}-${mth}-${d}`, "YYYY-M-D").format('YYYY-MM-DD');
+        }
+
+        // [格式C] 复杂格式综合体 (如 260602, 26.06.02, 26年6月2日, 20260602)
+        // 支持纯数字相连，也支持 . - / 年月日 作为分隔符
+        let complexMatch = s.match(/(?:^|[^\d])((?:20)?\d{2})[-./年_]?([0-1]?\d)[-./月_]?([0-3]?\d)日?(?:[^\d]|$)/);
+        if (complexMatch) {
+            let y = parseInt(complexMatch[1]);
+            let mth = parseInt(complexMatch[2]);
+            let d = parseInt(complexMatch[3]);
+            if (y > 0 && y < 100) y += 2000; // 将 26 转换为 2026
+            if (mth >= 1 && mth <= 12 && d >= 1 && d <= 31) {
+                return moment(`${y}-${mth}-${d}`, "YYYY-M-D").format('YYYY-MM-DD');
+            }
+        }
+        
+        // [格式D] 终极容错：(如 2662 -> 26年6月2日，省略0)
+        let lenientMatch = s.match(/(?:^|[^\d])(2\d)[-./年_]?([1-9]|1[0-2])[-./月_]?([1-9]|[12]\d|3[01])日?(?:[^\d]|$)/);
+        if (lenientMatch) {
+            let y = parseInt(lenientMatch[1]) + 2000;
+            let mth = parseInt(lenientMatch[2]);
+            let d = parseInt(lenientMatch[3]);
+            return moment(`${y}-${mth}-${d}`, "YYYY-M-D").format('YYYY-MM-DD');
+        }
+
+        return null;
+    }
+    // =========================================
 
     renderCalendar(direction: 'left' | 'right' | 'none' = 'none') {
         this.boardArea.empty();
