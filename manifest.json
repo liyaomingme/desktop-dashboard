@@ -1,10 +1,10 @@
 {
-	"id": "obsidian-desktop-dashboard",
-	"name": "Desktop Dashboard (PC & Pad)",
-	"version": "1.4.0",
-	"minAppVersion": "1.0.0",
-	"description": "A horizontal dashboard designed specifically for desktop and tablet displays.",
-	"author": "YourName",
-	"authorUrl": "",
-	"isDesktopOnly": false
+  "id": "desktop-dashboard",
+  "name": "Desktop Dashboard",
+  "version": "1.0.0",
+  "minAppVersion": "1.10.0",
+  "description": "A beautifully crafted, traditional typography dashboard featuring dual-column layout and advanced date parsing engine for desktop and tablet screens.",
+  "author": "Li Yaoming",
+  "authorUrl": "https://github.com/liyaomingme",
+  "isDesktopOnly": true
 }
