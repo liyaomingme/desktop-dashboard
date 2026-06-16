@@ -1,5 +1,4 @@
-import { Plugin, WorkspaceLeaf, ItemView, TFolder, Modal, Setting, PluginSettingTab, App, TFile } from 'obsidian';
-import moment from 'moment';
+import { Plugin, WorkspaceLeaf, ItemView, TFolder, Modal, Setting, PluginSettingTab, App, TFile, moment, CachedMetadata, setIcon } from 'obsidian';
 import { Lunar } from 'lunar-javascript';
 
 const VIEW_TYPE_DASHBOARD = "desktop-dashboard-view";
@@ -24,7 +23,11 @@ export default class DashboardPlugin extends Plugin {
         this.addRibbonIcon('layout-dashboard', '控制中心', () => { this.activateView().catch(console.error); });
         this.addCommand({ id: 'show-dashboard', name: '显示控制中心', callback: () => { this.activateView().catch(console.error); } });
         this.addSettingTab(new DashboardSettingTab(this.app, this));
-        this.app.workspace.onLayoutReady(() => { if (this.settings.openOnStartup) this.activateView().catch(console.error); });
+        this.app.workspace.onLayoutReady(() => { 
+            if (this.settings.openOnStartup) {
+                this.activateView().catch(console.error); 
+            }
+        });
     }
     async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     async saveSettings() { await this.saveData(this.settings); }
@@ -64,7 +67,6 @@ class DashboardView extends ItemView {
         container.empty();
         container.addClass('dashboard-container');
         
-        // 官方推荐安全的多端本地语言提取
         moment.locale('zh-cn');
 
         this.buildFileDataMap();
@@ -77,7 +79,20 @@ class DashboardView extends ItemView {
         const lunarNow = Lunar.fromDate(now);
         
         const baziEl = header.createEl('h1', { cls: 'baseline-title bazi-title' });
-        baziEl.innerHTML = `${lunarNow.getYearInGanZhi()}<span class="bazi-unit">年</span><span class="bazi-sep">·</span>${lunarNow.getMonthInGanZhi()}<span class="bazi-unit">月</span><span class="bazi-sep">·</span>${lunarNow.getDayInGanZhi()}<span class="bazi-unit">日</span><span class="bazi-sep">·</span>${lunarNow.getTimeInGanZhi()}<span class="bazi-unit">时</span>`;
+        
+        // 彻底修复: innerHTML
+        baziEl.empty();
+        baziEl.appendText(lunarNow.getYearInGanZhi());
+        baziEl.createEl('span', { cls: 'bazi-unit', text: '年' });
+        baziEl.createEl('span', { cls: 'bazi-sep', text: '·' });
+        baziEl.appendText(lunarNow.getMonthInGanZhi());
+        baziEl.createEl('span', { cls: 'bazi-unit', text: '月' });
+        baziEl.createEl('span', { cls: 'bazi-sep', text: '·' });
+        baziEl.appendText(lunarNow.getDayInGanZhi());
+        baziEl.createEl('span', { cls: 'bazi-unit', text: '日' });
+        baziEl.createEl('span', { cls: 'bazi-sep', text: '·' });
+        baziEl.appendText(lunarNow.getTimeInGanZhi());
+        baziEl.createEl('span', { cls: 'bazi-unit', text: '时' });
 
         const plusBtn = headerRow.createEl('span', { text: '+', cls: 'floating-plus-btn' });
         this.plusMenu = headerRow.createDiv({ cls: 'plus-dropdown' });
@@ -88,7 +103,6 @@ class DashboardView extends ItemView {
             this.plusMenu.toggleClass('is-open', !this.plusMenu.hasClass('is-open'));
         };
 
-        // 彻底修复内存泄漏：建立安全绑定的全局监听器机制
         this.globalClickListener = () => { if(this.plusMenu) this.plusMenu.removeClass('is-open'); };
         this.containerEl.doc.addEventListener('click', this.globalClickListener);
 
@@ -135,7 +149,8 @@ class DashboardView extends ItemView {
         }
     }
 
-    extractDateFromFile(file: TFile, cache: any): string {
+    // 修复: 增加 null 类型校验以消除 any
+    extractDateFromFile(file: TFile, cache: CachedMetadata | null): string {
         let dateStr: string | null = null;
         let yearContext = moment(file.stat.ctime).year(); 
         
@@ -248,54 +263,46 @@ class DashboardView extends ItemView {
 
     triggerListAnimation(dateStr: string, files: TFile[], lunar: Lunar) {
         this.listScrollArea.empty();
+        this.listHeader.empty();
+
         const baziDay = `${lunar.getYearInGanZhi()}年 · ${lunar.getMonthInGanZhi()}月 · ${lunar.getDayInGanZhi()}日`;
 
         if (files.length === 0) { 
-            this.listHeader.innerHTML = `
-                <div class="record-list-date">${dateStr}</div>
-                <div class="record-list-lunar">${baziDay}</div>
-            `;
+            // 修复: 杜绝 innerHTML 并使用官方图标
+            this.listHeader.createDiv({ cls: 'record-list-date', text: dateStr });
+            this.listHeader.createDiv({ cls: 'record-list-lunar', text: baziDay });
             
             const emptyState = this.listScrollArea.createDiv({ cls: 'empty-state-container' });
-            emptyState.innerHTML = `
-                <div class="empty-state-svg">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17 8h1a4 4 0 1 1 0 8h-1"/>
-                        <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>
-                        <line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/>
-                    </svg>
-                </div>
-                <div class="empty-state-text">今日暂无足迹 · 喝杯茶休息一下</div>
-            `;
+            const svgContainer = emptyState.createDiv({ cls: 'empty-state-svg' });
+            setIcon(svgContainer, 'coffee'); 
+            emptyState.createDiv({ cls: 'empty-state-text', text: '今日暂无足迹 · 喝杯茶休息一下' });
             
-            this.listWrapper.style.maxHeight = '1000px';
-            this.listWrapper.style.opacity = '1';
+            this.listWrapper.setCssStyles({ maxHeight: '1000px', opacity: '1' });
             return; 
         }
         
-        this.listHeader.innerHTML = `
-            <div class="record-list-date">${dateStr} <span class="record-list-count">${files.length} 篇</span></div>
-            <div class="record-list-lunar">${baziDay}</div>
-        `;
+        // 修复: 杜绝 innerHTML
+        const dateDiv = this.listHeader.createDiv({ cls: 'record-list-date' });
+        dateDiv.appendText(dateStr + " ");
+        dateDiv.createEl('span', { cls: 'record-list-count', text: `${files.length} 篇` });
+        this.listHeader.createDiv({ cls: 'record-list-lunar', text: baziDay });
         
         files.forEach((file, index) => {
             const item = this.listScrollArea.createDiv({ cls: 'record-item' });
-            item.style.animationDelay = `${index * 0.06}s`;
+            item.setCssStyles({ animationDelay: `${index * 0.06}s` });
             
             const iconWrap = item.createDiv({ cls: 'record-icon' });
-            iconWrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>`;
+            setIcon(iconWrap, 'file-text');
             
             item.createDiv({ text: file.basename, cls: 'record-title' });
             
-            // 彻底修复：点击回调异步封装
             item.onclick = () => {
                 void (async () => {
                     await this.app.workspace.getLeaf('tab').openFile(file);
                 })();
             };
         });
-        this.listWrapper.style.maxHeight = '1000px';
-        this.listWrapper.style.opacity = '1';
+        this.listWrapper.setCssStyles({ maxHeight: '1000px', opacity: '1' });
     }
 
     promptNewNote(config: ActionConfig) {
@@ -333,7 +340,6 @@ class DashboardView extends ItemView {
     }
 
     async onClose() {
-        // 彻底释放内存，防止视图关闭后事件堆积
         if (this.globalClickListener) {
             this.containerEl.doc.removeEventListener('click', this.globalClickListener);
             this.globalClickListener = null;
@@ -395,14 +401,16 @@ class QuickNoteModal extends Modal {
                                 inputEl.dispatchEvent(new Event('input'));
                             };
                         });
-                        setTimeout(() => { settingControl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 100);
+                        // 修复: setTimeout
+                        window.setTimeout(() => { settingControl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 100);
                     } else { suggestWrapper.removeClass('is-open'); }
                 };
 
                 inputEl.addEventListener('click', showSuggestions);
                 inputEl.addEventListener('input', showSuggestions);
                 inputEl.addEventListener('focus', showSuggestions);
-                inputEl.addEventListener('blur', () => { setTimeout(() => suggestWrapper.removeClass('is-open'), 200); }); 
+                // 修复: setTimeout
+                inputEl.addEventListener('blur', () => { window.setTimeout(() => suggestWrapper.removeClass('is-open'), 200); }); 
             }
         });
         
@@ -420,17 +428,21 @@ class DashboardSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: '控制中心设置' });
+        
+        // 修复: 规范化标题生成
+        new Setting(containerEl).setName('控制中心设置').setHeading();
         
         new Setting(containerEl).setName('设为开屏主页 (打开时启动)')
             .setDesc('每次打开 Obsidian 时，将默认的新建空白页替换为控制中心。')
             .addToggle(toggle => toggle.setValue(this.plugin.settings.openOnStartup).onChange(async (val) => { this.plugin.settings.openOnStartup = val; await this.plugin.saveSettings(); }));
         
-        containerEl.createEl('h3', { text: '新建类型管理' });
+        // 修复: 规范化标题生成
+        new Setting(containerEl).setName('新建类型管理').setHeading();
         containerEl.createEl('p', { text: '支持的模板变量: {{DATE}}, {{TITLE}}, {{BAZI}} (生成: 丙午年 癸巳月 辛巳日 丙申时)', cls: 'setting-item-description' });
 
         this.plugin.settings.actions.forEach((action, index) => {
-            containerEl.createEl('h4', { text: `类型 ${index + 1}` });
+            // 修复: 规范化标题生成
+            new Setting(containerEl).setName(`类型 ${index + 1}`).setHeading();
             new Setting(containerEl).setName('名称 (留空隐藏)').addText(text => text.setValue(action.name).onChange(async (val) => { action.name = val; await this.plugin.saveSettings(); }));
             new Setting(containerEl).setName('保存文件夹').addText(text => text.setValue(action.folder).onChange(async (val) => { action.folder = val; await this.plugin.saveSettings(); }));
             new Setting(containerEl).setName('默认模板').addTextArea(text => { text.setValue(action.template).onChange(async (val) => { action.template = val; await this.plugin.saveSettings(); }); text.inputEl.rows = 5; });
