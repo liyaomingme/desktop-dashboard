@@ -17,7 +17,6 @@
     "typescript": "4.7.4"
   },
   "dependencies": {
-    "moment": "^2.29.4",
-    "lunar-javascript": "^1.6.12"
+    "lunar-javascript": "1.6.12"
   }
 }
