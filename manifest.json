@@ -1,7 +1,7 @@
 {
   "id": "desktop-dashboard",
   "name": "Desktop Dashboard",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "1.10.0",
   "description": "A beautifully crafted, traditional typography dashboard featuring dual-column layout and advanced date parsing engine for desktop and tablet screens.",
   "author": "Li Yaoming",
