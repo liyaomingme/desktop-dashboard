@@ -2,7 +2,7 @@ import { Plugin, WorkspaceLeaf, ItemView, TFolder, Modal, Setting, PluginSetting
 import moment from 'moment';
 import { Lunar } from 'lunar-javascript';
 
-const VIEW_TYPE_DASHBOARD = "mobile-dashboard-view";
+const VIEW_TYPE_DASHBOARD = "desktop-dashboard-view";
 
 interface ActionConfig { name: string; folder: string; template: string; }
 interface DashboardSettings { openOnStartup: boolean; actions: ActionConfig[]; }
@@ -21,16 +21,19 @@ export default class DashboardPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
-        this.addRibbonIcon('layout-dashboard', '控制中心', () => this.activateView());
-        this.addCommand({ id: 'show-dashboard', name: '显示控制中心', callback: () => this.activateView() });
+        this.addRibbonIcon('layout-dashboard', '控制中心', () => { this.activateView().catch(console.error); });
+        this.addCommand({ id: 'show-dashboard', name: '显示控制中心', callback: () => { this.activateView().catch(console.error); } });
         this.addSettingTab(new DashboardSettingTab(this.app, this));
-        this.app.workspace.onLayoutReady(() => { if (this.settings.openOnStartup) this.activateView(); });
+        this.app.workspace.onLayoutReady(() => { if (this.settings.openOnStartup) this.activateView().catch(console.error); });
     }
     async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
     async saveSettings() { await this.saveData(this.settings); }
     async activateView() {
         let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASHBOARD)[0];
-        if (!leaf) { leaf = this.app.workspace.getLeaf(true); await leaf.setViewState({ type: VIEW_TYPE_DASHBOARD, active: true }); }
+        if (!leaf) { 
+            leaf = this.app.workspace.getLeaf('tab'); 
+            await leaf.setViewState({ type: VIEW_TYPE_DASHBOARD, active: true }); 
+        }
         this.app.workspace.revealLeaf(leaf);
     }
 }
@@ -38,12 +41,13 @@ export default class DashboardPlugin extends Plugin {
 class DashboardView extends ItemView {
     plugin: DashboardPlugin;
     boardArea: HTMLElement;
-    currentMonth: any;
+    currentMonth: moment.Moment;
     fileDataMap: Record<string, TFile[]> = {}; 
     listWrapper: HTMLElement;
     listScrollArea: HTMLElement;
     listHeader: HTMLElement;
     plusMenu: HTMLElement;
+    private globalClickListener: (() => void) | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: DashboardPlugin) {
         super(leaf);
@@ -56,10 +60,12 @@ class DashboardView extends ItemView {
     getIcon() { return "layout-dashboard"; }
 
     async onOpen() {
-        const container = this.containerEl.children[1];
+        const container = this.containerEl.children[1] as HTMLElement;
         container.empty();
         container.addClass('dashboard-container');
-        moment.locale(window.localStorage.getItem('language') || 'zh-cn');
+        
+        // 官方推荐安全的多端本地语言提取
+        moment.locale('zh-cn');
 
         this.buildFileDataMap();
 
@@ -81,7 +87,10 @@ class DashboardView extends ItemView {
             e.stopPropagation();
             this.plusMenu.toggleClass('is-open', !this.plusMenu.hasClass('is-open'));
         };
-        document.addEventListener('click', () => { if(this.plusMenu) this.plusMenu.removeClass('is-open'); });
+
+        // 彻底修复内存泄漏：建立安全绑定的全局监听器机制
+        this.globalClickListener = () => { if(this.plusMenu) this.plusMenu.removeClass('is-open'); };
+        this.containerEl.doc.addEventListener('click', this.globalClickListener);
 
         const gridContainer = container.createDiv({ cls: 'desktop-grid-container' });
         
@@ -104,26 +113,23 @@ class DashboardView extends ItemView {
         this.plugin.settings.actions.forEach(action => {
             if (!action.name) return;
             const item = this.plusMenu.createDiv({ cls: 'dropdown-item', text: action.name });
-            item.onclick = () => { this.plusMenu.removeClass('is-open'); this.promptNewNote(action); };
+            item.onclick = () => { 
+                this.plusMenu.removeClass('is-open'); 
+                this.promptNewNote(action); 
+            };
         });
     }
 
-    // =========================================
-    // 🌟 核心引擎：全能日期嗅探器 🌟
-    // =========================================
     buildFileDataMap() {
         this.fileDataMap = {};
         this.app.vault.getMarkdownFiles().forEach(file => {
             const cache = this.app.metadataCache.getFileCache(file);
-            
-            // 使用全新的强力日期提取引擎
             const formatKey = this.extractDateFromFile(file, cache);
             
             if (!this.fileDataMap[formatKey]) this.fileDataMap[formatKey] = [];
             this.fileDataMap[formatKey].push(file);
         });
         
-        // 按时间倒序排列同一天的文章
         for (const key in this.fileDataMap) { 
             this.fileDataMap[key].sort((a, b) => b.stat.ctime - a.stat.ctime); 
         }
@@ -133,37 +139,30 @@ class DashboardView extends ItemView {
         let dateStr: string | null = null;
         let yearContext = moment(file.stat.ctime).year(); 
         
-        // 1. 智能推断：如果文件路径包含年份（如 "2026/05/"），以此作为缺省年份
         const pathYearMatch = file.path.match(/(20\d{2})/);
         if (pathYearMatch) {
             yearContext = parseInt(pathYearMatch[1]);
         }
 
-        // 2. 第一优先级：检索 YAML Frontmatter 中的 date 字段
         if (cache?.frontmatter?.date) {
             dateStr = String(cache.frontmatter.date).trim();
             const parsed = this.parseLenientDate(dateStr, yearContext);
             if (parsed) return parsed;
         }
 
-        // 3. 第二优先级：直接从文件名 (basename) 中强行扣出日期
         dateStr = file.basename.trim();
         const parsedFilename = this.parseLenientDate(dateStr, yearContext);
         if (parsedFilename) return parsedFilename;
 
-        // 4. 最后兜底：系统文件创建时间（防同步重置的最后防线）
         return moment(file.stat.ctime).format('YYYY-MM-DD');
     }
 
     parseLenientDate(s: string, defaultYear: number): string | null {
         s = s.trim();
 
-        // [格式A] 标准格式 (如 2026-05-08, 2026/05/08)
         let m = moment(s, ["YYYY-MM-DD", "YYYY/MM/DD", "YYYY.MM.DD", "YYYY-MM-DDTHH:mm"], true);
         if (m.isValid()) return m.format('YYYY-MM-DD');
 
-        // [格式B] 速记格式 MMDD (如 0531, 0602-标题)
-        // 严格限定开头必须是 01-12 月，且只能有4位连续数字
         let mmddMatch = s.match(/^(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?:[^\d]|$)/);
         if (mmddMatch) {
             let mth = parseInt(mmddMatch[1]);
@@ -171,20 +170,17 @@ class DashboardView extends ItemView {
             return moment(`${defaultYear}-${mth}-${d}`, "YYYY-M-D").format('YYYY-MM-DD');
         }
 
-        // [格式C] 复杂格式综合体 (如 260602, 26.06.02, 26年6月2日, 20260602)
-        // 支持纯数字相连，也支持 . - / 年月日 作为分隔符
         let complexMatch = s.match(/(?:^|[^\d])((?:20)?\d{2})[-./年_]?([0-1]?\d)[-./月_]?([0-3]?\d)日?(?:[^\d]|$)/);
         if (complexMatch) {
             let y = parseInt(complexMatch[1]);
             let mth = parseInt(complexMatch[2]);
             let d = parseInt(complexMatch[3]);
-            if (y > 0 && y < 100) y += 2000; // 将 26 转换为 2026
+            if (y > 0 && y < 100) y += 2000; 
             if (mth >= 1 && mth <= 12 && d >= 1 && d <= 31) {
                 return moment(`${y}-${mth}-${d}`, "YYYY-M-D").format('YYYY-MM-DD');
             }
         }
         
-        // [格式D] 终极容错：(如 2662 -> 26年6月2日，省略0)
         let lenientMatch = s.match(/(?:^|[^\d])(2\d)[-./年_]?([1-9]|1[0-2])[-./月_]?([1-9]|[12]\d|3[01])日?(?:[^\d]|$)/);
         if (lenientMatch) {
             let y = parseInt(lenientMatch[1]) + 2000;
@@ -195,7 +191,6 @@ class DashboardView extends ItemView {
 
         return null;
     }
-    // =========================================
 
     renderCalendar(direction: 'left' | 'right' | 'none' = 'none') {
         this.boardArea.empty();
@@ -244,7 +239,7 @@ class DashboardView extends ItemView {
             }
 
             cell.onclick = () => {
-                grid.findAll('.calendar-cell').forEach(el => el.removeClass('active-selection'));
+                grid.querySelectorAll('.calendar-cell').forEach(el => el.removeClass('active-selection'));
                 cell.addClass('active-selection');
                 this.triggerListAnimation(dateKey, files, lunar);
             };
@@ -285,37 +280,44 @@ class DashboardView extends ItemView {
         
         files.forEach((file, index) => {
             const item = this.listScrollArea.createDiv({ cls: 'record-item' });
-            
             item.style.animationDelay = `${index * 0.06}s`;
             
             const iconWrap = item.createDiv({ cls: 'record-icon' });
             iconWrap.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>`;
             
             item.createDiv({ text: file.basename, cls: 'record-title' });
-            item.onclick = async () => { await this.app.workspace.getLeaf(true).openFile(file); };
+            
+            // 彻底修复：点击回调异步封装
+            item.onclick = () => {
+                void (async () => {
+                    await this.app.workspace.getLeaf('tab').openFile(file);
+                })();
+            };
         });
         this.listWrapper.style.maxHeight = '1000px';
         this.listWrapper.style.opacity = '1';
     }
 
-    async promptNewNote(config: ActionConfig) {
-        new QuickNoteModal(this.app, config, async (title, date, folderPath) => {
-            const selectedDate = moment(date).toDate();
-            selectedDate.setHours(new Date().getHours()); 
-            const lunarFull = Lunar.fromDate(selectedDate);
-            const baziFullStr = `${lunarFull.getYearInGanZhi()}年 ${lunarFull.getMonthInGanZhi()}月 ${lunarFull.getDayInGanZhi()}日 ${lunarFull.getTimeInGanZhi()}时`;
+    promptNewNote(config: ActionConfig) {
+        new QuickNoteModal(this.app, config, (title, date, folderPath) => {
+            void (async () => {
+                const selectedDate = moment(date).toDate();
+                selectedDate.setHours(new Date().getHours()); 
+                const lunarFull = Lunar.fromDate(selectedDate);
+                const baziFullStr = `${lunarFull.getYearInGanZhi()}年 ${lunarFull.getMonthInGanZhi()}月 ${lunarFull.getDayInGanZhi()}日 ${lunarFull.getTimeInGanZhi()}时`;
 
-            const parsedContent = config.template
-                .replace(/\{\{DATE\}\}/g, date)
-                .replace(/\{\{TITLE\}\}/g, title)
-                .replace(/\{\{BAZI\}\}/g, baziFullStr);
+                const parsedContent = config.template
+                    .replace(/\{\{DATE\}\}/g, date)
+                    .replace(/\{\{TITLE\}\}/g, title)
+                    .replace(/\{\{BAZI\}\}/g, baziFullStr);
 
-            await this.ensureFolder(folderPath);
-            const fileName = `${folderPath}/${title}.md`;
-            try {
-                const file = await this.app.vault.create(fileName, parsedContent);
-                await this.app.workspace.getLeaf(true).openFile(file);
-            } catch (e) { console.error("创建失败", e); }
+                await this.ensureFolder(folderPath);
+                const fileName = `${folderPath}/${title}.md`;
+                try {
+                    const file = await this.app.vault.create(fileName, parsedContent);
+                    await this.app.workspace.getLeaf('tab').openFile(file);
+                } catch (e) { console.error("创建失败", e); }
+            })();
         }).open();
     }
 
@@ -324,7 +326,17 @@ class DashboardView extends ItemView {
         let currentPath = "";
         for (const folder of folders) {
             currentPath += (currentPath === "" ? "" : "/") + folder;
-            if (!(this.app.vault.getAbstractFileByPath(currentPath) instanceof TFolder)) await this.app.vault.createFolder(currentPath);
+            if (!(this.app.vault.getAbstractFileByPath(currentPath) instanceof TFolder)) {
+                await this.app.vault.createFolder(currentPath);
+            }
+        }
+    }
+
+    async onClose() {
+        // 彻底释放内存，防止视图关闭后事件堆积
+        if (this.globalClickListener) {
+            this.containerEl.doc.removeEventListener('click', this.globalClickListener);
+            this.globalClickListener = null;
         }
     }
 }
@@ -336,7 +348,7 @@ class QuickNoteModal extends Modal {
     actionConfig: ActionConfig;
     onSubmit: (title: string, date: string, folder: string) => void;
     
-    constructor(app: any, config: ActionConfig, onSubmit: (title: string, date: string, folder: string) => void) { 
+    constructor(app: App, config: ActionConfig, onSubmit: (title: string, date: string, folder: string) => void) { 
         super(app); 
         this.actionConfig = config;
         this.onSubmit = onSubmit; 
@@ -355,7 +367,7 @@ class QuickNoteModal extends Modal {
         new Setting(contentEl).setName('记录标题').addText(text => { text.setValue(this.title); text.onChange(value => this.title = value); });
         new Setting(contentEl).setName('归档日期').addText(text => { text.setValue(this.date); text.onChange(value => this.date = value); });
         
-        const folderSetting = new Setting(contentEl).setName('归档路径 (点击查看已有文件夹)').addText(text => { 
+        new Setting(contentEl).setName('归档路径 (点击查看已有文件夹)').addText(text => { 
             text.setValue(this.folderPath); 
             text.onChange(value => this.folderPath = value); 
             
