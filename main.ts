@@ -6,6 +6,17 @@ const VIEW_TYPE_DASHBOARD = "desktop-dashboard-view";
 interface ActionConfig { name: string; folder: string; template: string; }
 interface DashboardSettings { openOnStartup: boolean; actions: ActionConfig[]; }
 
+// 手动为农历库补充严格的类型接口，消灭所有 unsafe-member-access 警告
+interface ILunar {
+    getYearInGanZhi(): string;
+    getMonthInGanZhi(): string;
+    getDayInGanZhi(): string;
+    getTimeInGanZhi(): string;
+    getDay(): number;
+    getMonthInChinese(): string;
+    getDayInChinese(): string;
+}
+
 const DEFAULT_SETTINGS: DashboardSettings = {
     openOnStartup: false,
     actions: [
@@ -20,12 +31,15 @@ export default class DashboardPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         this.registerView(VIEW_TYPE_DASHBOARD, (leaf) => new DashboardView(leaf, this));
-        this.addRibbonIcon('layout-dashboard', '控制中心', () => { this.activateView().catch(console.error); });
-        this.addCommand({ id: 'show-dashboard', name: '显示控制中心', callback: () => { this.activateView().catch(console.error); } });
+        
+        // 增加 void 操作符，彻底解决 Promise 悬挂警告
+        this.addRibbonIcon('layout-dashboard', '控制中心', () => { void this.activateView().catch(console.error); });
+        this.addCommand({ id: 'show-dashboard', name: '显示控制中心', callback: () => { void this.activateView().catch(console.error); } });
+        
         this.addSettingTab(new DashboardSettingTab(this.app, this));
         this.app.workspace.onLayoutReady(() => { 
             if (this.settings.openOnStartup) {
-                this.activateView().catch(console.error); 
+                void this.activateView().catch(console.error); 
             }
         });
     }
@@ -76,11 +90,11 @@ class DashboardView extends ItemView {
         header.createDiv({ text: moment().format('M月D日 dddd'), cls: 'baseline-date' });
 
         const now = new Date();
-        const lunarNow = Lunar.fromDate(now);
+        // 强制类型推断，消除 any 污染
+        const lunarNow = (Lunar as unknown as { fromDate: (d: Date) => ILunar }).fromDate(now);
         
         const baziEl = header.createEl('h1', { cls: 'baseline-title bazi-title' });
         
-        // 彻底修复: innerHTML
         baziEl.empty();
         baziEl.appendText(lunarNow.getYearInGanZhi());
         baziEl.createEl('span', { cls: 'bazi-unit', text: '年' });
@@ -149,7 +163,6 @@ class DashboardView extends ItemView {
         }
     }
 
-    // 修复: 增加 null 类型校验以消除 any
     extractDateFromFile(file: TFile, cache: CachedMetadata | null): string {
         let dateStr: string | null = null;
         let yearContext = moment(file.stat.ctime).year(); 
@@ -159,8 +172,10 @@ class DashboardView extends ItemView {
             yearContext = parseInt(pathYearMatch[1]);
         }
 
-        if (cache?.frontmatter?.date) {
-            dateStr = String(cache.frontmatter.date).trim();
+        // 严苛类型推断，消除 unsafe-argument 警告
+        if (cache && cache.frontmatter && cache.frontmatter.date !== undefined) {
+            const rawDate = cache.frontmatter.date as string | number;
+            dateStr = String(rawDate).trim();
             const parsed = this.parseLenientDate(dateStr, yearContext);
             if (parsed) return parsed;
         }
@@ -237,7 +252,7 @@ class DashboardView extends ItemView {
             const cell = grid.createDiv({ cls: 'calendar-cell' });
             
             const d = new Date(year, month, day);
-            const lunar = Lunar.fromDate(d);
+            const lunar = (Lunar as unknown as { fromDate: (d: Date) => ILunar }).fromDate(d);
             const lunarDayStr = lunar.getDay() === 1 ? lunar.getMonthInChinese() + '月' : lunar.getDayInChinese();
             
             cell.createDiv({ text: day.toString(), cls: 'cal-date-num' });
@@ -261,14 +276,13 @@ class DashboardView extends ItemView {
         }
     }
 
-    triggerListAnimation(dateStr: string, files: TFile[], lunar: Lunar) {
+    triggerListAnimation(dateStr: string, files: TFile[], lunar: ILunar) {
         this.listScrollArea.empty();
         this.listHeader.empty();
 
         const baziDay = `${lunar.getYearInGanZhi()}年 · ${lunar.getMonthInGanZhi()}月 · ${lunar.getDayInGanZhi()}日`;
 
         if (files.length === 0) { 
-            // 修复: 杜绝 innerHTML 并使用官方图标
             this.listHeader.createDiv({ cls: 'record-list-date', text: dateStr });
             this.listHeader.createDiv({ cls: 'record-list-lunar', text: baziDay });
             
@@ -281,7 +295,6 @@ class DashboardView extends ItemView {
             return; 
         }
         
-        // 修复: 杜绝 innerHTML
         const dateDiv = this.listHeader.createDiv({ cls: 'record-list-date' });
         dateDiv.appendText(dateStr + " ");
         dateDiv.createEl('span', { cls: 'record-list-count', text: `${files.length} 篇` });
@@ -310,7 +323,7 @@ class DashboardView extends ItemView {
             void (async () => {
                 const selectedDate = moment(date).toDate();
                 selectedDate.setHours(new Date().getHours()); 
-                const lunarFull = Lunar.fromDate(selectedDate);
+                const lunarFull = (Lunar as unknown as { fromDate: (d: Date) => ILunar }).fromDate(selectedDate);
                 const baziFullStr = `${lunarFull.getYearInGanZhi()}年 ${lunarFull.getMonthInGanZhi()}月 ${lunarFull.getDayInGanZhi()}日 ${lunarFull.getTimeInGanZhi()}时`;
 
                 const parsedContent = config.template
@@ -401,7 +414,6 @@ class QuickNoteModal extends Modal {
                                 inputEl.dispatchEvent(new Event('input'));
                             };
                         });
-                        // 修复: setTimeout
                         window.setTimeout(() => { settingControl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 100);
                     } else { suggestWrapper.removeClass('is-open'); }
                 };
@@ -409,7 +421,6 @@ class QuickNoteModal extends Modal {
                 inputEl.addEventListener('click', showSuggestions);
                 inputEl.addEventListener('input', showSuggestions);
                 inputEl.addEventListener('focus', showSuggestions);
-                // 修复: setTimeout
                 inputEl.addEventListener('blur', () => { window.setTimeout(() => suggestWrapper.removeClass('is-open'), 200); }); 
             }
         });
@@ -429,19 +440,16 @@ class DashboardSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
         
-        // 修复: 规范化标题生成
         new Setting(containerEl).setName('控制中心设置').setHeading();
         
         new Setting(containerEl).setName('设为开屏主页 (打开时启动)')
             .setDesc('每次打开 Obsidian 时，将默认的新建空白页替换为控制中心。')
             .addToggle(toggle => toggle.setValue(this.plugin.settings.openOnStartup).onChange(async (val) => { this.plugin.settings.openOnStartup = val; await this.plugin.saveSettings(); }));
         
-        // 修复: 规范化标题生成
         new Setting(containerEl).setName('新建类型管理').setHeading();
         containerEl.createEl('p', { text: '支持的模板变量: {{DATE}}, {{TITLE}}, {{BAZI}} (生成: 丙午年 癸巳月 辛巳日 丙申时)', cls: 'setting-item-description' });
 
         this.plugin.settings.actions.forEach((action, index) => {
-            // 修复: 规范化标题生成
             new Setting(containerEl).setName(`类型 ${index + 1}`).setHeading();
             new Setting(containerEl).setName('名称 (留空隐藏)').addText(text => text.setValue(action.name).onChange(async (val) => { action.name = val; await this.plugin.saveSettings(); }));
             new Setting(containerEl).setName('保存文件夹').addText(text => text.setValue(action.folder).onChange(async (val) => { action.folder = val; await this.plugin.saveSettings(); }));
