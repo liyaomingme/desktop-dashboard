@@ -91,3 +91,6 @@ A glassmorphism modal with flicker-free animations directly tied to Obsidian's n
 安装并启用后，进入插件设置页面：
 1. **设为开屏主页**：开启“打开时启动”选项，即可在每次打开 Obsidian 桌面版时直接看到控制中心。
 2. **自定义记录动作**：自由修改新建类型的名称、默认归档文件夹，以及带有 `{{DATE}}`、`{{TITLE}}`、`{{BAZI}}` 变量的 YAML 模板。
+
+   <img width="864" height="1820" alt="岁时案台电脑" src="https://github.com/user-attachments/assets/c9f746b7-2cc8-440b-933a-5b41df125fb9" />
+
