@@ -10,7 +10,7 @@
 <br>
 
 <!-- 🌟 替换：主视觉效果图（桌面版建议使用宽度 800px 左右的横屏宽图截图） -->
-<img width="3024" height="1744" alt="岁时案台桌面" src="https://github.com/user-attachments/assets/0054b234-f399-45df-bb60-0dd2a1b6c82a" />
+<img src="https://github.com/user-attachments/assets/0054b234-f399-45df-bb60-0dd2a1b6c82a" width="800" alt="岁时案台 桌面版主界面">
 
 
 </div>
