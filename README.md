@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✨ 岁时案台 Time Desk (Desktop)
+# ✨ Time Desk (Desktop) | 岁时案台
 
 *A desktop-first, beautifully crafted dashboard plugin for Obsidian. It transforms your blank startup screen into a highly productive control center featuring a dual-column layout, traditional typography, and a robust date-parsing engine.*
 一款专为 Obsidian 桌面端打造的控制中心，融合传统岁时美学与现代双栏高效布局。
